@@ -1,0 +1,12 @@
+# Binary
+/dcmd
+dcmd-*
+
+# Build artifacts
+*.exe
+
+# OS files
+.DS_Store
+
+# Docs (plans, specs — not for release)
+docs/
