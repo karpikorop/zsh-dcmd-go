@@ -1,4 +1,4 @@
-// Package template finds and fills {{name}} placeholders in a command.
+// Package template finds and fills {{name}} and {{name:default}} placeholders in a command.
 package template
 
 import (
@@ -9,10 +9,13 @@ import (
 var placeholderPattern = regexp.MustCompile(`{{([^}]+)}}`)
 
 type Variable struct {
-	Name string
+	Name       string
+	Default    string
+	HasDefault bool
 }
 
 // Variables returns each variable of a command once, in the order of first use.
+// If a variable appears more than once, its first placeholder sets the default.
 func Variables(command string) []Variable {
 	seen := make(map[string]bool)
 	variables := []Variable{}
@@ -38,6 +41,17 @@ func Render(command string, values map[string]string) string {
 	})
 }
 
+// ValidName reports whether name can be used inside a placeholder.
+func ValidName(name string) bool {
+	return strings.TrimSpace(name) != "" && !strings.ContainsAny(name, ":{}")
+}
+
+// parsePlaceholder splits "name:default" on the first colon, so a default can contain colons.
 func parsePlaceholder(inner string) Variable {
-	return Variable{Name: strings.TrimSpace(inner)}
+	name, defaultValue, hasDefault := strings.Cut(inner, ":")
+	return Variable{
+		Name:       strings.TrimSpace(name),
+		Default:    strings.TrimSpace(defaultValue),
+		HasDefault: hasDefault,
+	}
 }

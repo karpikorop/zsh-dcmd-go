@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"strings"
 
@@ -34,6 +33,9 @@ var runCmd = &cobra.Command{
 Pass variable values with --var to skip the prompts:
   dcmd run 4 --var FunctionName=invoca
 
+Project variables (see 'dcmd var') fill their placeholders without a prompt.
+A {{name:default}} placeholder starts its prompt with the default value.
+
 Use --print to write the final command to stdout instead of your prompt.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,45 +63,89 @@ func runByArg(p *store.Project, arg string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
-	return runCommand(c, opts)
+	return runCommand(p, c, opts)
 }
 
-func runCommand(c *store.Command, opts runOptions) error {
+func runCommand(p *store.Project, c *store.Command, opts runOptions) error {
 	if !opts.print {
 		info("Selected: %s", c.Description)
 		info("Template: %s\n", c.Run)
 	}
 
-	values, err := resolveValues(c.Run, opts.values)
+	values, err := resolveValues(c.Run, p.Vars, opts.values)
 	if err != nil {
 		return err
 	}
 	return emitCommand(template.Render(c.Run, values), opts.print)
 }
 
-// resolveValues checks the given values and asks the user for the missing ones.
-func resolveValues(command string, given map[string]string) (map[string]string, error) {
+// resolveValues picks a value for each variable. The order is: given values, project variables,
+// then a prompt (or the default when there is no terminal).
+func resolveValues(command string, projectVars, given map[string]string) (map[string]string, error) {
 	variables := template.Variables(command)
-	if err := checkUnknownVariables(variables, given); err != nil {
+	err := checkUnknownVariables(variables, given)
+	if err != nil {
 		return nil, err
 	}
 
 	values := make(map[string]string, len(variables))
-	maps.Copy(values, given)
-
-	missing := missingVariables(variables, values)
-	if len(missing) > 0 && !ui.IsInteractive() {
-		return nil, fmt.Errorf("missing values for %s. Pass each one with 'dcmd run <number> --var NAME=VALUE'", quoteNames(missing))
+	var missing []template.Variable
+	for _, v := range variables {
+		if value, ok := given[v.Name]; ok {
+			values[v.Name] = value
+		} else if value, ok := projectVars[v.Name]; ok {
+			values[v.Name] = value
+		} else {
+			missing = append(missing, v)
+		}
 	}
 
+	if ui.IsInteractive() {
+		err = promptForValues(values, missing)
+	} else {
+		err = fillDefaults(values, missing)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+// fillDefaults sets each missing variable to its default. It fails if a variable has no default.
+func fillDefaults(values map[string]string, missing []template.Variable) error {
+	var noDefault []template.Variable
 	for _, v := range missing {
-		value, err := ui.Input(fmt.Sprintf("Enter value for '%s'", v.Name))
+		if v.HasDefault {
+			values[v.Name] = v.Default
+		} else {
+			noDefault = append(noDefault, v)
+		}
+	}
+
+	if len(noDefault) > 0 {
+		return fmt.Errorf("missing values for %s. Pass each one with 'dcmd run <number> --var NAME=VALUE'", quoteNames(noDefault))
+	}
+	return nil
+}
+
+func promptForValues(values map[string]string, missing []template.Variable) error {
+	for _, v := range missing {
+		label := fmt.Sprintf("Enter value for '%s'", v.Name)
+
+		var value string
+		var err error
+		if v.HasDefault {
+			value, err = ui.InputWithDefault(label, v.Default)
+		} else {
+			value, err = ui.Input(label)
+		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		values[v.Name] = value
 	}
-	return values, nil
+	return nil
 }
 
 func checkUnknownVariables(variables []template.Variable, given map[string]string) error {
@@ -114,16 +160,6 @@ func checkUnknownVariables(variables []template.Variable, given map[string]strin
 		}
 	}
 	return nil
-}
-
-func missingVariables(variables []template.Variable, values map[string]string) []template.Variable {
-	var missing []template.Variable
-	for _, v := range variables {
-		if _, ok := values[v.Name]; !ok {
-			missing = append(missing, v)
-		}
-	}
-	return missing
 }
 
 func quoteNames(variables []template.Variable) string {

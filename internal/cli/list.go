@@ -46,9 +46,9 @@ var showCmd = &cobra.Command{
 		}
 
 		if showOpts.json {
-			return writeJSON(newCommandView(*c))
+			return writeJSON(newCommandView(*c, p.Vars))
 		}
-		printCommand(os.Stdout, c)
+		printCommand(os.Stdout, c, p.Vars)
 		return nil
 	},
 }

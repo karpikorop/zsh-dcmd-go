@@ -52,6 +52,7 @@ func init() {
 	RootCmd.AddCommand(editCmd)
 	RootCmd.AddCommand(deleteCmd)
 	RootCmd.AddCommand(renumberCmd)
+	RootCmd.AddCommand(varCmd)
 	RootCmd.AddCommand(globalCmd)
 	RootCmd.AddCommand(configCmd)
 	RootCmd.AddCommand(linkCmd)

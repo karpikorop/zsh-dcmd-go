@@ -11,10 +11,9 @@ import (
 )
 
 var addOpts struct {
-	all         bool
-	global      bool
-	command     string
-	description string
+	all    bool
+	global bool
+	input  store.Command
 }
 
 var addCmd = &cobra.Command{
@@ -25,6 +24,8 @@ var addCmd = &cobra.Command{
 Without flags, dcmd asks for the command and the description.
 Pass both flags to add a command without prompts:
   dcmd add --command "yarn build" --description "Build"
+
+Use --confirm for commands that change a remote service, so agents ask first.
 
 Use --all to add a command to multiple projects at once:
   dcmd add --all`,
@@ -39,7 +40,7 @@ Use --all to add a command to multiple projects at once:
 		if err != nil {
 			return err
 		}
-		if err := addToProject(s, p, addOpts.command, addOpts.description); err != nil {
+		if err := addToProject(s, p, addOpts.input); err != nil {
 			return err
 		}
 
@@ -53,11 +54,12 @@ Use --all to add a command to multiple projects at once:
 func init() {
 	addCmd.Flags().BoolVar(&addOpts.all, "all", false, "Add command to multiple projects at once")
 	addGlobalFlag(addCmd, &addOpts.global)
-	addCmd.Flags().StringVar(&addOpts.command, "command", "", "The command to save")
-	addCmd.Flags().StringVar(&addOpts.description, "description", "", "A short description")
-	addCmd.MarkFlagsMutuallyExclusive("all", "global")
-	addCmd.MarkFlagsMutuallyExclusive("all", "command")
-	addCmd.MarkFlagsMutuallyExclusive("all", "description")
+	addCmd.Flags().StringVar(&addOpts.input.Run, "command", "", "The command to save")
+	addCmd.Flags().StringVar(&addOpts.input.Description, "description", "", "A short description")
+	addCmd.Flags().BoolVar(&addOpts.input.Confirm, "confirm", false, "Mark the command as one that needs confirmation")
+	for _, flag := range []string{"global", "command", "description", "confirm"} {
+		addCmd.MarkFlagsMutuallyExclusive("all", flag)
+	}
 }
 
 func addTarget(s *store.Store, global bool) (p *store.Project, created bool, err error) {
@@ -68,13 +70,13 @@ func addTarget(s *store.Store, global bool) (p *store.Project, created bool, err
 	return currentOrNewProject(s)
 }
 
-func addToProject(s *store.Store, p *store.Project, run, description string) error {
-	run, description, err := fillNewCommand(run, description)
+func addToProject(s *store.Store, p *store.Project, input store.Command) error {
+	input, err := fillNewCommand(input)
 	if err != nil {
 		return err
 	}
 
-	c := p.AddCommand(run, description)
+	c := p.AddCommand(input)
 	if err := s.Save(p); err != nil {
 		return err
 	}
@@ -97,14 +99,14 @@ func addToManyProjects(s *store.Store) error {
 		return err
 	}
 
-	run, description, err := fillNewCommand("", "")
+	input, err := fillNewCommand(store.Command{})
 	if err != nil {
 		return err
 	}
 
 	var saveErrors []error
 	for _, p := range selected {
-		c := p.AddCommand(run, description)
+		c := p.AddCommand(input)
 		if err := s.Save(p); err != nil {
 			saveErrors = append(saveErrors, fmt.Errorf("save '%s': %w", p.Name, err))
 			continue
@@ -152,20 +154,20 @@ func promptProjectSelection(projects []*store.Project) ([]*store.Project, error)
 }
 
 // fillNewCommand asks for the command and the description that were not passed as flags.
-func fillNewCommand(run, description string) (string, string, error) {
+func fillNewCommand(input store.Command) (store.Command, error) {
 	var err error
-	if strings.TrimSpace(run) == "" {
-		if run, err = promptRequired("Enter the command"); err != nil {
-			return "", "", err
+	if strings.TrimSpace(input.Run) == "" {
+		if input.Run, err = promptRequired("Enter the command"); err != nil {
+			return store.Command{}, err
 		}
 	}
 
-	if strings.TrimSpace(description) == "" {
-		if description, err = promptRequired("Enter a short description"); err != nil {
-			return "", "", err
+	if strings.TrimSpace(input.Description) == "" {
+		if input.Description, err = promptRequired("Enter a short description"); err != nil {
+			return store.Command{}, err
 		}
 	}
-	return run, description, nil
+	return input, nil
 }
 
 // promptRequired treats an empty answer as a cancel.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/karpikorop/zsh-dcmd-go/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +32,7 @@ var globalAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return addToProject(s, p, "", "")
+		return addToProject(s, p, store.Command{})
 	},
 }
 

@@ -12,8 +12,9 @@ func TestSaveAndLoadKeepsCommandsExactly(t *testing.T) {
 	original := &Project{
 		Name:  "app",
 		Paths: []string{"/work/app/"},
+		Vars:  map[string]string{"project": "app-dev", "File Name": "a b"},
 		Commands: []Command{
-			{ID: 1, Description: "Deploy", Run: `yarn deploy --only functions:{{Name}} --project "dev"`},
+			{ID: 1, Description: "Deploy", Run: `yarn deploy --only functions:{{Name}} --project "dev"`, Confirm: true},
 			{ID: 4, Description: "Pipe | and quotes", Run: `cat a.log | grep 'x' \ y`},
 		},
 	}
@@ -28,6 +29,9 @@ func TestSaveAndLoadKeepsCommandsExactly(t *testing.T) {
 
 	if loaded.Paths[0] != "/work/app" {
 		t.Errorf("path not cleaned: %q", loaded.Paths[0])
+	}
+	if loaded.Vars["File Name"] != "a b" || loaded.Vars["project"] != "app-dev" {
+		t.Errorf("vars not kept: %v", loaded.Vars)
 	}
 	for i, want := range original.Commands {
 		if loaded.Commands[i] != want {
@@ -119,7 +123,7 @@ func TestLoadGlobal(t *testing.T) {
 		t.Fatalf("missing global file: got %+v, %v", empty, err)
 	}
 
-	empty.AddCommand("echo hi", "Say hi")
+	empty.AddCommand(Command{Run: "echo hi", Description: "Say hi"})
 	mustSave(t, s, empty)
 
 	if _, err := os.Stat(filepath.Join(dir, "global.toml")); err != nil {
@@ -129,14 +133,14 @@ func TestLoadGlobal(t *testing.T) {
 
 func TestProjectCommandIDs(t *testing.T) {
 	p := &Project{}
-	p.AddCommand("a", "A")
-	p.AddCommand("b", "B")
-	p.AddCommand("c", "C")
+	p.AddCommand(Command{Run: "a", Description: "A"})
+	p.AddCommand(Command{Run: "b", Description: "B"})
+	p.AddCommand(Command{Run: "c", Description: "C"})
 
 	if !p.RemoveCommand(2) || p.RemoveCommand(2) {
 		t.Fatal("RemoveCommand should succeed once")
 	}
-	if added := p.AddCommand("d", "D"); added.ID != 4 {
+	if added := p.AddCommand(Command{Run: "d", Description: "D"}); added.ID != 4 {
 		t.Errorf("new ID after a gap: got %d, want 4", added.ID)
 	}
 	if _, ok := p.Command(3); !ok {

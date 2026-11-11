@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/karpikorop/zsh-dcmd-go/internal/store"
@@ -40,18 +42,43 @@ func printCommands(w io.Writer, p *store.Project) {
 	fmt.Fprintf(w, "\nUsage: %s\n", usage)
 }
 
-func printCommand(w io.Writer, c *store.Command) {
+func printCommand(w io.Writer, c *store.Command, projectVars map[string]string) {
 	fmt.Fprintf(w, "#%d %s\n", c.ID, c.Description)
 	fmt.Fprintf(w, "  %s\n", c.Run)
+	if c.Confirm {
+		fmt.Fprintf(w, "  Needs confirmation\n")
+	}
 
 	variables := template.Variables(c.Run)
 	if len(variables) == 0 {
 		return
 	}
 
-	names := make([]string, 0, len(variables))
+	descriptions := make([]string, 0, len(variables))
 	for _, v := range variables {
-		names = append(names, v.Name)
+		descriptions = append(descriptions, describeVariable(v, projectVars))
 	}
-	fmt.Fprintf(w, "  Variables: %s\n", strings.Join(names, ", "))
+	fmt.Fprintf(w, "  Variables: %s\n", strings.Join(descriptions, ", "))
+}
+
+func describeVariable(v template.Variable, projectVars map[string]string) string {
+	if value, ok := projectVars[v.Name]; ok {
+		return fmt.Sprintf("%s = %s (project)", v.Name, value)
+	}
+	if v.HasDefault {
+		return fmt.Sprintf("%s (default: %s)", v.Name, v.Default)
+	}
+	return v.Name
+}
+
+func printVars(w io.Writer, p *store.Project) {
+	if len(p.Vars) == 0 {
+		fmt.Fprintf(w, "No variables set for '%s'.\n", p.Name)
+		return
+	}
+
+	fmt.Fprintf(w, "Variables of '%s':\n", p.Name)
+	for _, name := range slices.Sorted(maps.Keys(p.Vars)) {
+		fmt.Fprintf(w, "  %s = %s\n", name, p.Vars[name])
+	}
 }

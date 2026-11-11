@@ -10,19 +10,37 @@ type Command struct {
 	ID          int    `toml:"id"`
 	Description string `toml:"description"`
 	Run         string `toml:"run"`
+	Confirm     bool   `toml:"confirm,omitempty"`
 }
 
 // Project is a named list of commands that belongs to one or more folders.
 type Project struct {
-	Name     string    `toml:"-"`
-	Paths    []string  `toml:"paths,omitempty"`
-	Commands []Command `toml:"commands"`
+	Name     string            `toml:"-"`
+	Paths    []string          `toml:"paths,omitempty"`
+	Vars     map[string]string `toml:"vars,omitempty"`
+	Commands []Command         `toml:"commands"`
 
 	global bool
 }
 
 func (p *Project) IsGlobal() bool {
 	return p.global
+}
+
+func (p *Project) SetVar(name, value string) {
+	if p.Vars == nil {
+		p.Vars = make(map[string]string)
+	}
+	p.Vars[name] = value
+}
+
+func (p *Project) UnsetVar(name string) bool {
+	if _, ok := p.Vars[name]; !ok {
+		return false
+	}
+
+	delete(p.Vars, name)
+	return true
 }
 
 func (p *Project) Command(id int) (*Command, bool) {
@@ -34,11 +52,11 @@ func (p *Project) Command(id int) (*Command, bool) {
 	return nil, false
 }
 
-// AddCommand appends a command with an ID one higher than the highest ID in use.
-func (p *Project) AddCommand(run, description string) Command {
-	cmd := Command{ID: p.nextID(), Description: description, Run: run}
-	p.Commands = append(p.Commands, cmd)
-	return cmd
+// AddCommand appends a copy of c with an ID one higher than the highest ID in use.
+func (p *Project) AddCommand(c Command) Command {
+	c.ID = p.nextID()
+	p.Commands = append(p.Commands, c)
+	return c
 }
 
 // RemoveCommand deletes a command and keeps the IDs of all other commands.
