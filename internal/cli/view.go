@@ -16,6 +16,13 @@ type projectView struct {
 	Commands []commandView     `json:"commands"`
 }
 
+// projectSummaryView is the JSON shape of one project in 'dcmd projects'.
+type projectSummaryView struct {
+	Name     string   `json:"name"`
+	Paths    []string `json:"paths"`
+	Commands int      `json:"commands"`
+}
+
 type commandView struct {
 	ID          int            `json:"id"`
 	Description string         `json:"description"`
@@ -45,6 +52,18 @@ func newProjectView(p *store.Project) projectView {
 		view.Commands = append(view.Commands, newCommandView(c, p.Vars))
 	}
 	return view
+}
+
+func newProjectSummaries(projects []*store.Project) []projectSummaryView {
+	summaries := make([]projectSummaryView, 0, len(projects))
+	for _, p := range projects {
+		summaries = append(summaries, projectSummaryView{
+			Name:     p.Name,
+			Paths:    append([]string{}, p.Paths...),
+			Commands: len(p.Commands),
+		})
+	}
+	return summaries
 }
 
 func newCommandView(c store.Command, projectVars map[string]string) commandView {

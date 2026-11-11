@@ -58,4 +58,5 @@ func init() {
 	RootCmd.AddCommand(linkCmd)
 	RootCmd.AddCommand(pathCmd)
 	RootCmd.AddCommand(copyCmd)
+	RootCmd.AddCommand(projectsCmd)
 }

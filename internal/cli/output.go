@@ -82,3 +82,15 @@ func printVars(w io.Writer, p *store.Project) {
 		fmt.Fprintf(w, "  %s = %s\n", name, p.Vars[name])
 	}
 }
+
+func printProjects(w io.Writer, projects []*store.Project) {
+	if len(projects) == 0 {
+		fmt.Fprintln(w, "No projects found. Run 'dcmd add' in a project folder to create one.")
+		return
+	}
+
+	fmt.Fprintln(w, "Projects:")
+	for _, p := range projects {
+		fmt.Fprintf(w, "  %s (%d commands): %s\n", p.Name, len(p.Commands), strings.Join(p.Paths, ", "))
+	}
+}

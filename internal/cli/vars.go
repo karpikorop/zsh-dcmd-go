@@ -18,7 +18,7 @@ var varOpts struct {
 
 var varCmd = &cobra.Command{
 	Use:   "var",
-	Short: "List the variables of the current project",
+	Short: "Manage the variables of the current project",
 	Long: `List the variables of the current project.
 
 A project variable fills every {{name}} with the same name, so dcmd does not ask for it:
