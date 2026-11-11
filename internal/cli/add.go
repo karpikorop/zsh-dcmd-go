@@ -10,36 +10,66 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var addAllFlag bool
+var addOpts struct {
+	all         bool
+	global      bool
+	command     string
+	description string
+}
 
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a new command to the current project",
 	Long: `Add a new command to the current project.
 
+Without flags, dcmd asks for the command and the description.
+Pass both flags to add a command without prompts:
+  dcmd add --command "yarn build" --description "Build"
+
 Use --all to add a command to multiple projects at once:
   dcmd add --all`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s := openStore()
-		if addAllFlag {
+		if addOpts.all {
 			return addToManyProjects(s)
 		}
 
-		p, err := currentOrNewProject(s)
+		p, created, err := addTarget(s, addOpts.global)
 		if err != nil {
 			return err
 		}
-		return addToProject(s, p)
+		if err := addToProject(s, p, addOpts.command, addOpts.description); err != nil {
+			return err
+		}
+
+		if created {
+			info("Created project '%s' for '%s'.", p.Name, p.Paths[0])
+		}
+		return nil
 	},
 }
 
 func init() {
-	addCmd.Flags().BoolVar(&addAllFlag, "all", false, "Add command to multiple projects at once")
+	addCmd.Flags().BoolVar(&addOpts.all, "all", false, "Add command to multiple projects at once")
+	addGlobalFlag(addCmd, &addOpts.global)
+	addCmd.Flags().StringVar(&addOpts.command, "command", "", "The command to save")
+	addCmd.Flags().StringVar(&addOpts.description, "description", "", "A short description")
+	addCmd.MarkFlagsMutuallyExclusive("all", "global")
+	addCmd.MarkFlagsMutuallyExclusive("all", "command")
+	addCmd.MarkFlagsMutuallyExclusive("all", "description")
 }
 
-func addToProject(s *store.Store, p *store.Project) error {
-	run, description, err := promptNewCommand()
+func addTarget(s *store.Store, global bool) (p *store.Project, created bool, err error) {
+	if global {
+		p, err = s.LoadGlobal()
+		return p, false, err
+	}
+	return currentOrNewProject(s)
+}
+
+func addToProject(s *store.Store, p *store.Project, run, description string) error {
+	run, description, err := fillNewCommand(run, description)
 	if err != nil {
 		return err
 	}
@@ -67,7 +97,7 @@ func addToManyProjects(s *store.Store) error {
 		return err
 	}
 
-	run, description, err := promptNewCommand()
+	run, description, err := fillNewCommand("", "")
 	if err != nil {
 		return err
 	}
@@ -121,15 +151,19 @@ func promptProjectSelection(projects []*store.Project) ([]*store.Project, error)
 	return selected, nil
 }
 
-func promptNewCommand() (run, description string, err error) {
-	run, err = promptRequired("Enter the command")
-	if err != nil {
-		return "", "", err
+// fillNewCommand asks for the command and the description that were not passed as flags.
+func fillNewCommand(run, description string) (string, string, error) {
+	var err error
+	if strings.TrimSpace(run) == "" {
+		if run, err = promptRequired("Enter the command"); err != nil {
+			return "", "", err
+		}
 	}
 
-	description, err = promptRequired("Enter a short description")
-	if err != nil {
-		return "", "", err
+	if strings.TrimSpace(description) == "" {
+		if description, err = promptRequired("Enter a short description"); err != nil {
+			return "", "", err
+		}
 	}
 	return run, description, nil
 }

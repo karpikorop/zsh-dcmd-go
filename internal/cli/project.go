@@ -25,18 +25,27 @@ func currentProject(s *store.Store) (*store.Project, error) {
 	return p, err
 }
 
+// targetProject returns the global project or the project of the current folder.
+func targetProject(s *store.Store, global bool) (*store.Project, error) {
+	if global {
+		return s.LoadGlobal()
+	}
+	return currentProject(s)
+}
+
 // currentOrNewProject returns the project of the current folder, or a new unsaved project for it.
-func currentOrNewProject(s *store.Store) (*store.Project, error) {
+func currentOrNewProject(s *store.Store) (p *store.Project, created bool, err error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	p, err := s.FindByDir(dir)
+	p, err = s.FindByDir(dir)
 	if errors.Is(err, store.ErrNotFound) {
-		return s.NewProject(dir)
+		p, err = s.NewProject(dir)
+		return p, err == nil, err
 	}
-	return p, err
+	return p, false, err
 }
 
 // loadProjectByName loads a project by its name. The name "global" loads the global project.

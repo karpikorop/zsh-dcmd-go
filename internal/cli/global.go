@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 )
 
@@ -17,10 +15,9 @@ var globalCmd = &cobra.Command{
 		}
 
 		if len(args) == 0 {
-			printCommands(os.Stderr, p)
-			return nil
+			return printProject(p, false)
 		}
-		return runByArg(p, args[0])
+		return runByArg(p, args[0], runOptions{})
 	},
 }
 
@@ -34,7 +31,7 @@ var globalAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return addToProject(s, p)
+		return addToProject(s, p, "", "")
 	},
 }
 
@@ -48,7 +45,7 @@ var globalEditCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return editInProject(s, p)
+		return editInProject(s, p, nil, commandChange{})
 	},
 }
 

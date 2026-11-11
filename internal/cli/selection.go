@@ -27,6 +27,22 @@ func findCommand(p *store.Project, id int) (*store.Command, error) {
 	return c, nil
 }
 
+// commandFromArgs returns the command named by the first argument, or asks the user to pick one.
+func commandFromArgs(p *store.Project, args []string, action string) (*store.Command, error) {
+	if len(args) == 0 {
+		return selectCommand(p, action)
+	}
+	return commandByArg(p, args[0])
+}
+
+func commandByArg(p *store.Project, arg string) (*store.Command, error) {
+	id, err := parseNumber(arg)
+	if err != nil {
+		return nil, err
+	}
+	return findCommand(p, id)
+}
+
 // selectCommand shows the command list and asks the user for a command number.
 func selectCommand(p *store.Project, action string) (*store.Command, error) {
 	if len(p.Commands) == 0 {

@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +16,12 @@ Global commands are available everywhere:
   dcmd global             List global commands
   dcmd global <number>    Run a global command
   dcmd global add         Add a new global command
-  dcmd global edit        Edit an existing global command`,
+  dcmd global edit        Edit an existing global command
+
+For scripts and AI agents, every command works without prompts:
+  dcmd list --json
+  dcmd run 4 --var FunctionName=invoca --print
+  dcmd add --command "yarn build" --description "Build"`,
 	Args:          cobra.MaximumNArgs(1),
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -29,10 +32,9 @@ Global commands are available everywhere:
 		}
 
 		if len(args) == 0 {
-			printCommands(os.Stderr, p)
-			return nil
+			return printProject(p, false)
 		}
-		return runByArg(p, args[0])
+		return runByArg(p, args[0], runOptions{})
 	},
 }
 
@@ -41,10 +43,11 @@ func Execute() error {
 }
 
 func init() {
-	RootCmd.SetOut(os.Stderr)
-	RootCmd.SetErr(os.Stderr)
 	RootCmd.CompletionOptions.DisableDefaultCmd = true
 
+	RootCmd.AddCommand(listCmd)
+	RootCmd.AddCommand(showCmd)
+	RootCmd.AddCommand(runCmd)
 	RootCmd.AddCommand(addCmd)
 	RootCmd.AddCommand(editCmd)
 	RootCmd.AddCommand(deleteCmd)

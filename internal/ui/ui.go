@@ -2,48 +2,28 @@ package ui
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"regexp"
-	"strings"
 
 	"github.com/chzyer/readline"
 	"github.com/manifoldco/promptui"
 )
 
-var ErrCancelled = errors.New("cancelled")
+var (
+	ErrCancelled  = errors.New("cancelled")
+	ErrNoTerminal = errors.New("this needs an interactive terminal. Pass the values as flags instead (see 'dcmd help')")
+)
 
-var variablePattern = regexp.MustCompile(`{{([^}]+)}}`)
-
-func ExtractVariables(template string) []string {
-	seen := make(map[string]bool)
-	var variables []string
-
-	for _, match := range variablePattern.FindAllString(template, -1) {
-		if !seen[match] {
-			seen[match] = true
-			variables = append(variables, match)
-		}
-	}
-	return variables
-}
-
-func PromptForVariables(template string) (string, error) {
-	finalCmd := template
-
-	for _, tag := range ExtractVariables(template) {
-		name := tag[2 : len(tag)-2]
-		value, err := Input(fmt.Sprintf("Enter value for '%s'", name))
-		if err != nil {
-			return "", err
-		}
-		finalCmd = strings.ReplaceAll(finalCmd, tag, value)
-	}
-	return finalCmd, nil
+// IsInteractive reports whether stdin is a terminal, so prompts can read an answer.
+func IsInteractive() bool {
+	return readline.IsTerminal(int(os.Stdin.Fd()))
 }
 
 func Input(label string) (string, error) {
+	if !IsInteractive() {
+		return "", ErrNoTerminal
+	}
+
 	prompt := promptui.Prompt{Label: label, Stdin: os.Stdin, Stdout: os.Stderr}
 	result, err := prompt.Run()
 	return result, normalizeError(err)
@@ -51,6 +31,10 @@ func Input(label string) (string, error) {
 
 // InputWithDefault shows an editable prompt that starts with defaultValue.
 func InputWithDefault(label, defaultValue string) (string, error) {
+	if !IsInteractive() {
+		return "", ErrNoTerminal
+	}
+
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt: label + ": ",
 		Stdin:  os.Stdin,
@@ -68,6 +52,10 @@ func InputWithDefault(label, defaultValue string) (string, error) {
 
 // Confirm asks a yes/no question. An empty answer means yes.
 func Confirm(label string) (bool, error) {
+	if !IsInteractive() {
+		return false, ErrNoTerminal
+	}
+
 	prompt := promptui.Prompt{
 		Label:     label,
 		IsConfirm: true,

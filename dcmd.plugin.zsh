@@ -64,15 +64,25 @@ _dcmd_ensure_binary() {
     return 1
 }
 
+# The binary writes the chosen command to DCMD_BUFFER_FILE. The wrapper puts it on the prompt for review.
 dcmd() {
     if ! _dcmd_ensure_binary; then
         return 1
     fi
 
-    local cmd_to_run
-    cmd_to_run=$("$DCMD_BIN" "$@")
+    local buffer_file exit_code
+    buffer_file=$(mktemp "${TMPDIR:-/tmp}/dcmd.XXXXXX") || return 1
 
-    if [[ -n "$cmd_to_run" ]]; then
-        print -z "$cmd_to_run"
-    fi
+    {
+        DCMD_BUFFER_FILE="$buffer_file" "$DCMD_BIN" "$@"
+        exit_code=$?
+
+        if [[ -s "$buffer_file" ]]; then
+            print -z -- "$(<"$buffer_file")"
+        fi
+    } always {
+        rm -f -- "$buffer_file"
+    }
+
+    return $exit_code
 }
