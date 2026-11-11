@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -10,82 +12,49 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+var ErrCancelled = errors.New("cancelled")
+
+var variablePattern = regexp.MustCompile(`{{([^}]+)}}`)
+
 func ExtractVariables(template string) []string {
-	re := regexp.MustCompile(`{{([^}]+)}}`)
-	matches := re.FindAllStringSubmatch(template, -1)
-	
 	seen := make(map[string]bool)
 	var variables []string
-	for _, match := range matches {
-		if !seen[match[0]] {
-			seen[match[0]] = true
-			variables = append(variables, match[0])
+
+	for _, match := range variablePattern.FindAllString(template, -1) {
+		if !seen[match] {
+			seen[match] = true
+			variables = append(variables, match)
 		}
 	}
 	return variables
 }
 
 func PromptForVariables(template string) (string, error) {
-	variables := ExtractVariables(template)
-	if len(variables) == 0 {
-		return template, nil
-	}
-
 	finalCmd := template
-	for _, varTag := range variables {
-		cleanName := varTag[2 : len(varTag)-2]
-		
-		prompt := promptui.Prompt{
-			Label: fmt.Sprintf("Enter value for '%s'", cleanName),
-			// Use Stderr for the prompt itself so it doesn't pollute stdout
-			Stdin:  os.Stdin,
-			Stdout: os.Stderr,
-		}
 
-		result, err := prompt.Run()
+	for _, tag := range ExtractVariables(template) {
+		name := tag[2 : len(tag)-2]
+		value, err := Input(fmt.Sprintf("Enter value for '%s'", name))
 		if err != nil {
 			return "", err
 		}
-
-		finalCmd = strings.ReplaceAll(finalCmd, varTag, result)
+		finalCmd = strings.ReplaceAll(finalCmd, tag, value)
 	}
-
 	return finalCmd, nil
 }
 
-func PromptConfirm(label string) (bool, error) {
-	prompt := promptui.Prompt{
-		Label:     label + " (Y/n)",
-		IsConfirm: true,
-		Stdin:     os.Stdin,
-		Stdout:    os.Stderr,
-	}
-
+func Input(label string) (string, error) {
+	prompt := promptui.Prompt{Label: label, Stdin: os.Stdin, Stdout: os.Stderr}
 	result, err := prompt.Run()
-	if err != nil {
-		if err == promptui.ErrAbort {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return result == "y" || result == "Y" || result == "", nil
+	return result, normalizeError(err)
 }
 
-func PromptInput(label string) (string, error) {
-	prompt := promptui.Prompt{
-		Label:  label,
-		Stdin:  os.Stdin,
-		Stdout: os.Stderr,
-	}
-	return prompt.Run()
-}
-
-func PromptInputWithDefault(label, defaultValue string) (string, error) {
+// InputWithDefault shows an editable prompt that starts with defaultValue.
+func InputWithDefault(label, defaultValue string) (string, error) {
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt: fmt.Sprintf("%s: ", label),
-		Stdout: os.Stderr,
+		Prompt: label + ": ",
 		Stdin:  os.Stdin,
+		Stdout: os.Stderr,
 	})
 	if err != nil {
 		return "", err
@@ -93,38 +62,37 @@ func PromptInputWithDefault(label, defaultValue string) (string, error) {
 	defer rl.Close()
 
 	rl.WriteStdin([]byte(defaultValue))
-
 	result, err := rl.Readline()
-	if err != nil {
-		return "", err
-	}
-	return result, nil
+	return result, normalizeError(err)
 }
 
-func PromptInputNoPipe(label string) (string, error) {
-	for {
-		result, err := PromptInput(label)
-		if err != nil {
-			return "", err
-		}
-		if strings.Contains(result, "|") {
-			fmt.Fprintf(os.Stderr, "Error: input cannot contain the '|' character. Please try again.\n")
-			continue
-		}
-		return result, nil
+// Confirm asks a yes/no question. An empty answer means yes.
+func Confirm(label string) (bool, error) {
+	prompt := promptui.Prompt{
+		Label:     label,
+		IsConfirm: true,
+		Default:   "y",
+		Stdin:     os.Stdin,
+		Stdout:    os.Stderr,
 	}
+
+	_, err := prompt.Run()
+	if errors.Is(err, promptui.ErrAbort) {
+		return false, nil
+	}
+	return err == nil, normalizeError(err)
 }
 
-func PromptInputWithDefaultNoPipe(label, defaultValue string) (string, error) {
-	for {
-		result, err := PromptInputWithDefault(label, defaultValue)
-		if err != nil {
-			return "", err
-		}
-		if strings.Contains(result, "|") {
-			fmt.Fprintf(os.Stderr, "Error: input cannot contain the '|' character. Please try again.\n")
-			continue
-		}
-		return result, nil
+func normalizeError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, promptui.ErrInterrupt),
+		errors.Is(err, promptui.ErrEOF),
+		errors.Is(err, readline.ErrInterrupt),
+		errors.Is(err, io.EOF):
+		return ErrCancelled
+	default:
+		return err
 	}
 }

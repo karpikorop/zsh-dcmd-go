@@ -1,78 +1,54 @@
 package cli
 
 import (
-	"fmt"
 	"os"
-	"strconv"
 
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
-	"github.com/karpikorop/zsh-dcmd-go/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var globalCmd = &cobra.Command{
-	Use:   "global",
+	Use:   "global [number]",
 	Short: "Manage global commands",
-	Args:  cobra.ArbitraryArgs,
-	Run: func(cmd *cobra.Command, args []string) {
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := openStore().LoadGlobal()
+		if err != nil {
+			return err
+		}
+
 		if len(args) == 0 {
-			showCommands("global")
-			return
+			printCommands(os.Stderr, p)
+			return nil
 		}
-
-		if num, err := strconv.Atoi(args[0]); err == nil {
-			executeCommand("global", num)
-			return
-		}
-
-		cmd.Help()
+		return runByArg(p, args[0])
 	},
 }
 
 var globalAddCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a new global command",
-	Run: func(cmd *cobra.Command, args []string) {
-		cfg, err := config.LoadProjectConfig("global")
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := s.LoadGlobal()
 		if err != nil {
-			cfg = &config.ProjectConfig{Name: "global"}
+			return err
 		}
-
-		newCmd, err := ui.PromptInputNoPipe("Enter the GLOBAL command")
-		if err != nil || newCmd == "" {
-			return
-		}
-		newDesc, err := ui.PromptInputNoPipe("Enter a short description")
-		if err != nil || newDesc == "" {
-			return
-		}
-
-		lastID := 0
-		for _, c := range cfg.Commands {
-			if c.ID > lastID {
-				lastID = c.ID
-			}
-		}
-
-		cfg.Commands = append(cfg.Commands, config.Command{
-			ID:          lastID + 1,
-			Template:    newCmd,
-			Description: newDesc,
-		})
-
-		if err := config.SaveProjectConfig(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Global command added.\n")
-		}
+		return addToProject(s, p)
 	},
 }
 
 var globalEditCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Edit an existing global command",
-	Run: func(cmd *cobra.Command, args []string) {
-		editCommandInProject("global")
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := s.LoadGlobal()
+		if err != nil {
+			return err
+		}
+		return editInProject(s, p)
 	},
 }
 

@@ -4,50 +4,58 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
+	"github.com/karpikorop/zsh-dcmd-go/internal/store"
 	"github.com/spf13/cobra"
 )
 
 var configCmd = &cobra.Command{
 	Use:   "config [project]",
-	Short: "Open a config file in your default GUI editor",
-	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		projectName := config.GetCurrentProjectName()
-		if len(args) > 0 {
-			projectName = args[0]
-		}
+	Short: "Open a project file in your default GUI editor",
+	Long: `Open the file of the current project in your default GUI editor.
 
-		configDir := config.GetConfigDir()
-		filePath := filepath.Join(configDir, projectName+".conf")
-
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating config directory: %v\n", err)
-			return
-		}
-
-		// Ensure the file exists so the editor doesn't complain
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			os.WriteFile(filePath, []byte(""), 0644)
-		}
-
-		var err error
-		switch runtime.GOOS {
-		case "darwin":
-			err = exec.Command("open", filePath).Run()
-		case "linux":
-			err = exec.Command("xdg-open", filePath).Run()
-		case "windows":
-			err = exec.Command("cmd", "/c", "start", filePath).Run()
-		default:
-			err = fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-		}
-
+Pass a project name to open another project. Use "global" for the global commands.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := projectForConfig(s, args)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error opening editor: %v\n", err)
+			return err
 		}
+
+		path := s.FilePath(p)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			if err := s.Save(p); err != nil {
+				return err
+			}
+		}
+		return openInEditor(path)
 	},
+}
+
+func projectForConfig(s *store.Store, args []string) (*store.Project, error) {
+	if len(args) == 0 {
+		return currentProject(s)
+	}
+	return loadProjectByName(s, args[0])
+}
+
+func openInEditor(path string) error {
+	var opener *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		opener = exec.Command("open", path)
+	case "linux":
+		opener = exec.Command("xdg-open", path)
+	case "windows":
+		opener = exec.Command("cmd", "/c", "start", path)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	if err := opener.Run(); err != nil {
+		return fmt.Errorf("open editor: %w", err)
+	}
+	return nil
 }

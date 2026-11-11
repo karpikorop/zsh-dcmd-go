@@ -1,32 +1,26 @@
 package cli
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
 	"github.com/spf13/cobra"
 )
 
 var renumberCmd = &cobra.Command{
 	Use:   "renumber",
-	Short: "Renumber commands in the current project",
-	Run: func(cmd *cobra.Command, args []string) {
-		projectName := config.GetCurrentProjectName()
-		cfg, err := config.LoadProjectConfig(projectName)
+	Short: "Renumber commands in the current project from 1",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := currentProject(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "No config found for '%s'.\n", projectName)
-			return
+			return err
 		}
 
-		for i := range cfg.Commands {
-			cfg.Commands[i].ID = i + 1
+		p.Renumber()
+		if err := s.Save(p); err != nil {
+			return err
 		}
 
-		if err := config.SaveProjectConfig(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Commands renumbered.\n")
-		}
+		info("Commands renumbered.")
+		return nil
 	},
 }

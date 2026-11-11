@@ -1,81 +1,107 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strconv"
 
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
+	"github.com/karpikorop/zsh-dcmd-go/internal/store"
 	"github.com/karpikorop/zsh-dcmd-go/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var linkCmd = &cobra.Command{
 	Use:   "link",
-	Short: "Link orphaned configurations to the current directory",
-	Run: func(cmd *cobra.Command, args []string) {
-		configDir := config.GetConfigDir()
-		files, _ := filepath.Glob(filepath.Join(configDir, "*.conf"))
+	Short: "Link an orphaned project to the current folder",
+	Long: `Link an orphaned project to the current folder.
 
-		type orphaned struct {
-			file string
-			path string
-		}
-		var orphans []orphaned
-
-		for _, f := range files {
-			if filepath.Base(f) == "global.conf" {
-				continue
-			}
-			cfg, err := config.ParseConfigFile(f)
-			if err == nil && cfg.Path != "" {
-				if _, err := os.Stat(cfg.Path); os.IsNotExist(err) {
-					orphans = append(orphans, orphaned{file: f, path: cfg.Path})
-				}
-			}
-		}
-
-		if len(orphans) == 0 {
-			fmt.Fprintf(os.Stderr, "No orphaned project configurations found.\n")
-			return
-		}
-
-		fmt.Fprintf(os.Stderr, "Found the following orphaned configurations:\n")
-		for i, o := range orphans {
-			fmt.Fprintf(os.Stderr, "  %d. %s (last known path: %s)\n", i+1, filepath.Base(o.file), o.path)
-		}
-
-		input, err := ui.PromptInput("Which one would you like to link? (Enter number)")
+A project is orphaned when none of its stored paths exist, for example after you moved or renamed the folder.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		dir, err := os.Getwd()
 		if err != nil {
-			return
+			return err
 		}
-		idx, err := strconv.Atoi(input)
-		if err != nil || idx < 1 || idx > len(orphans) {
-			fmt.Fprintf(os.Stderr, "Invalid selection.\n")
-			return
+		if err := ensureFolderIsFree(s, dir); err != nil {
+			return err
 		}
 
-		chosen := orphans[idx-1]
-		pwd, _ := os.Getwd()
-		confirm, _ := ui.PromptConfirm(fmt.Sprintf("Link config for '%s' to '%s'?", chosen.path, pwd))
-		if !confirm {
-			return
+		orphans, err := orphanedProjects(s)
+		if err != nil {
+			return err
+		}
+		if len(orphans) == 0 {
+			info("No orphaned projects found.")
+			return nil
 		}
 
-		cfg, _ := config.ParseConfigFile(chosen.file)
-		cfg.Path = pwd
-		cfg.Name = config.GetCurrentProjectName()
-
-		// Save new, then remove old if name changed
-		if err := config.SaveProjectConfig(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-			return
+		chosen, err := promptOrphan(orphans)
+		if err != nil {
+			return err
 		}
 
-		if filepath.Base(chosen.file) != cfg.Name+".conf" {
-			os.Remove(chosen.file)
+		confirmed, err := ui.Confirm(fmt.Sprintf("Link project '%s' to '%s'", chosen.Name, dir))
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(os.Stderr, "Successfully linked project to '%s.conf'.\n", cfg.Name)
+		if !confirmed {
+			info("Link cancelled.")
+			return nil
+		}
+
+		chosen.Paths = []string{dir}
+		if err := s.Save(chosen); err != nil {
+			return err
+		}
+
+		info("Linked project '%s' to '%s'.", chosen.Name, dir)
+		return nil
 	},
+}
+
+func orphanedProjects(s *store.Store) ([]*store.Project, error) {
+	projects, err := s.Projects()
+	if err != nil {
+		return nil, err
+	}
+
+	var orphans []*store.Project
+	for _, p := range projects {
+		if isOrphaned(p) {
+			orphans = append(orphans, p)
+		}
+	}
+	return orphans, nil
+}
+
+func isOrphaned(p *store.Project) bool {
+	if len(p.Paths) == 0 {
+		return false
+	}
+
+	for _, path := range p.Paths {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+	}
+	return true
+}
+
+func promptOrphan(orphans []*store.Project) (*store.Project, error) {
+	info("Found the following orphaned projects:")
+	for i, p := range orphans {
+		info("  %d. %s (last known paths: %v)", i+1, p.Name, p.Paths)
+	}
+
+	input, err := ui.Input("Which one would you like to link? (Enter number)")
+	if err != nil {
+		return nil, err
+	}
+
+	index, err := parseNumber(input)
+	if err != nil || index > len(orphans) {
+		return nil, errors.New("invalid selection")
+	}
+	return orphans[index-1], nil
 }

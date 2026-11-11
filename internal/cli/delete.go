@@ -2,10 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
 	"github.com/karpikorop/zsh-dcmd-go/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -13,56 +10,38 @@ import (
 var deleteCmd = &cobra.Command{
 	Use:   "delete",
 	Short: "Delete a command from the current project",
-	Run: func(cmd *cobra.Command, args []string) {
-		projectName := config.GetCurrentProjectName()
-		cfg, err := config.LoadProjectConfig(projectName)
+	Long: `Delete a command from the current project.
+
+The other commands keep their numbers. Run 'dcmd renumber' to close the gaps.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := currentProject(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "No commands found for '%s'.\n", projectName)
-			return
+			return err
 		}
 
-		showCommands(projectName)
-		input, err := ui.PromptInput("Enter the number of the command to delete")
+		c, err := selectCommand(p, "delete")
 		if err != nil {
-			return
+			return err
 		}
 
-		num, err := strconv.Atoi(input)
+		confirmed, err := ui.Confirm(fmt.Sprintf("Delete command #%d \"%s\"", c.ID, c.Description))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid number.\n")
-			return
+			return err
+		}
+		if !confirmed {
+			info("Deletion cancelled.")
+			return nil
 		}
 
-		index := -1
-		for i, c := range cfg.Commands {
-			if c.ID == num {
-				index = i
-				break
-			}
+		id := c.ID
+		p.RemoveCommand(id)
+		if err := s.Save(p); err != nil {
+			return err
 		}
 
-		if index == -1 {
-			fmt.Fprintf(os.Stderr, "Command %d not found.\n", num)
-			return
-		}
-
-		confirm, _ := ui.PromptConfirm(fmt.Sprintf("Are you sure you want to delete command #%d: \"%s\"?", num, cfg.Commands[index].Description))
-		if !confirm {
-			fmt.Fprintf(os.Stderr, "Deletion cancelled.\n")
-			return
-		}
-
-		cfg.Commands = append(cfg.Commands[:index], cfg.Commands[index+1:]...)
-
-		// Renumber
-		for i := range cfg.Commands {
-			cfg.Commands[i].ID = i + 1
-		}
-
-		if err := config.SaveProjectConfig(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Command deleted and renumbered.\n")
-		}
+		info("Command #%d deleted.", id)
+		return nil
 	},
 }

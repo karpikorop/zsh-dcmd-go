@@ -1,11 +1,10 @@
 package cli
 
 import (
-	"fmt"
-	"os"
-	"strconv"
+	"errors"
+	"strings"
 
-	"github.com/karpikorop/zsh-dcmd-go/internal/config"
+	"github.com/karpikorop/zsh-dcmd-go/internal/store"
 	"github.com/karpikorop/zsh-dcmd-go/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -13,72 +12,46 @@ import (
 var editCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Edit an existing command in the current project",
-	Run: func(cmd *cobra.Command, args []string) {
-		projectName := config.GetCurrentProjectName()
-		editCommandInProject(projectName)
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s := openStore()
+		p, err := currentProject(s)
+		if err != nil {
+			return err
+		}
+		return editInProject(s, p)
 	},
 }
 
-func editCommandInProject(projectName string) {
-	cfg, err := config.LoadProjectConfig(projectName)
+func editInProject(s *store.Store, p *store.Project) error {
+	c, err := selectCommand(p, "edit")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "No commands found for '%s'.\n", projectName)
-		return
+		return err
 	}
 
-	if len(cfg.Commands) == 0 {
-		fmt.Fprintf(os.Stderr, "No commands found for '%s'.\n", projectName)
-		return
-	}
-
-	showCommands(projectName)
-
-	input, err := ui.PromptInput("Enter the number of the command to edit")
+	run, err := ui.InputWithDefault("Command", c.Run)
 	if err != nil {
-		return
+		return err
 	}
-
-	num, err := strconv.Atoi(input)
+	description, err := ui.InputWithDefault("Description", c.Description)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid number.\n")
-		return
+		return err
 	}
 
-	index := -1
-	for i, c := range cfg.Commands {
-		if c.ID == num {
-			index = i
-			break
-		}
+	if strings.TrimSpace(run) == "" || strings.TrimSpace(description) == "" {
+		return errors.New("the command and the description cannot be empty")
+	}
+	if run == c.Run && description == c.Description {
+		info("No changes made.")
+		return nil
 	}
 
-	if index == -1 {
-		fmt.Fprintf(os.Stderr, "Command %d not found.\n", num)
-		return
+	c.Run = run
+	c.Description = description
+	if err := s.Save(p); err != nil {
+		return err
 	}
 
-	current := cfg.Commands[index]
-
-	newTemplate, err := ui.PromptInputWithDefaultNoPipe("Command", current.Template)
-	if err != nil {
-		return
-	}
-	newDesc, err := ui.PromptInputWithDefaultNoPipe("Description", current.Description)
-	if err != nil {
-		return
-	}
-
-	if newTemplate == current.Template && newDesc == current.Description {
-		fmt.Fprintf(os.Stderr, "No changes made.\n")
-		return
-	}
-
-	cfg.Commands[index].Template = newTemplate
-	cfg.Commands[index].Description = newDesc
-
-	if err := config.SaveProjectConfig(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
-	} else {
-		fmt.Fprintf(os.Stderr, "Command #%d updated.\n", num)
-	}
+	info("Command #%d updated.", c.ID)
+	return nil
 }
