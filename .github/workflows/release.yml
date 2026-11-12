@@ -59,3 +59,39 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             dcmd-*
+
+  update-tap:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: karpikorop/homebrew-tap
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+
+      - name: Update the formula
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          url="https://github.com/$REPO/archive/refs/tags/$TAG.tar.gz"
+          curl -fsSL -o source.tar.gz "$url"
+          sha=$(sha256sum source.tar.gz | cut -d' ' -f1)
+          rm source.tar.gz
+
+          sed -i -E \
+            -e "s|^  url \".*\"$|  url \"$url\"|" \
+            -e "s|^  sha256 \".*\"$|  sha256 \"$sha\"|" \
+            Formula/dcmd.rb
+          grep -qF "url \"$url\"" Formula/dcmd.rb
+          grep -qF "sha256 \"$sha\"" Formula/dcmd.rb
+
+          if git diff --quiet; then
+            echo "The formula is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "dcmd $TAG"
+          git push
