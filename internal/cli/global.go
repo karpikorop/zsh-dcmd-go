@@ -14,11 +14,7 @@ var globalCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		if len(args) == 0 {
-			return printProject(p, false)
-		}
-		return runByArg(p, args[0], runOptions{})
+		return listOrRun(p, args)
 	},
 }
 
@@ -51,6 +47,7 @@ var globalEditCmd = &cobra.Command{
 }
 
 func init() {
+	addMenuFlags(globalCmd)
 	globalCmd.AddCommand(globalAddCmd)
 	globalCmd.AddCommand(globalEditCmd)
 }

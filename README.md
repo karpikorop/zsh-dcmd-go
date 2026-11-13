@@ -2,31 +2,36 @@
 
 Directory-Specific Command Manager
 
-A simple plugin to create, list, and run project-specific shell commands with variable support. Designed for Zsh, for personal use. Rewritten in Go for speed and maintainability.
+A simple tool to create, list, and run project-specific shell commands with variable support. Designed for Zsh, for personal use. Written in Go for speed and maintainability.
 
 ---
 
 ## Features
 
 #### Context-Aware Commands
-Define commands that are only available when you `cd` into a specific project directory. Stop remembering complex build, test, or deploy commands for each project.
+Define commands that are only available when you `cd` into a specific project directory or any of its subfolders. Stop remembering complex build, test, or deploy commands for each project.
+
+One project can have several folders (for example clones or worktrees), so they share the same commands.
 
 #### Global Commands
 A separate `dcmd global` list for commands you need everywhere, regardless of your current directory.
 
 #### Variables
-Define commands with `{{variable}}` placeholders. When you run the command, the plugin will automatically prompt you to fill in the values, making your scripts reusable.
+Define commands with `{{variable}}` placeholders. When you run the command, dcmd prompts you to fill in the values, making your scripts reusable.
+
+- `{{name:default}}` gives a placeholder a default value. The prompt starts with it, so you only press Enter.
+- Project variables fill a placeholder automatically. Set one with `dcmd var set project my-app-dev`, and every `{{project}}` in that project uses it without a prompt.
 
 #### Non-Intrusive by Design
 
-- All command configurations are stored centrally in your home directory (~/.config/dcmd).
+- All commands are stored centrally in your home directory (`~/.config/dcmd`), one plain TOML file per project.
 - Your project directories are never modified. This means you don't have to add config files to your `.gitignore` or pollute your project with personal-use files. This keeps your shortcuts independent of the codebase.
 
 #### Maintenance
 
-If you move or rename a project folder, your commands aren't lost. `dcmd link` helps you find these "orphaned" configurations and re-link them to the project's new location.
+If you move or rename a project folder, your commands aren't lost. `dcmd link` helps you find these "orphaned" projects and re-link them to the project's new location.
 
-Easily `delete` commands or `renumber` your entire list to keep it clean and organized.
+Command numbers stay the same when you delete a command. Run `renumber` when you want to close the gaps. Use `copy` to reuse commands from another project.
 
 #### Safe Execution
 
@@ -42,66 +47,42 @@ Commands are not run immediately. Instead, they are placed onto your command lin
 | Linux    | Supported | `dcmd config` opens files with `xdg-open`. |
 | Windows  | Partial | The Go binary works, but the Zsh wrapper requires a Zsh-compatible shell (e.g. WSL, Git Bash). |
 
-The Go binary itself is cross-platform. The Zsh wrapper (`dcmd.plugin.zsh`) is what integrates it into your shell — it requires Zsh and the `print -z` builtin for safe command buffering.
+The Go binary itself is cross-platform. The Zsh wrapper (printed by `dcmd init zsh`) is what integrates it into your shell — it requires Zsh and the `print -z` builtin for safe command buffering.
 
 ---
 
 ## Installation
 
-No Go required — the plugin automatically downloads a pre-built binary on first run.
-
-### Manual (Generic Zsh)
-
-Clone this repository somewhere on your machine, for example in `~/.zsh/zsh-dcmd`:
+Install with [Homebrew](https://brew.sh) (macOS and Linux):
 
 ```zsh
-git clone https://github.com/karpikorop/zsh-dcmd-go.git ~/.zsh/zsh-dcmd
+brew install karpikorop/tap/dcmd
 ```
 
-Add the following to your `.zshrc`:
+Add the following to your `~/.zshrc`:
 
 ```zsh
-source ~/.zsh/zsh-dcmd/dcmd.plugin.zsh
-```
-
-### Oh My Zsh
-
-Clone this repository into your Oh My Zsh custom plugins directory:
-
-```zsh
-git clone https://github.com/karpikorop/zsh-dcmd-go.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/dcmd
-```
-
-Add dcmd to the list of plugins in your `~/.zshrc` file:
-
-```zsh
-plugins=(
-# ... other plugins
-dcmd
-)
+eval "$(dcmd init zsh)"
 ```
 
 Restart your shell (or run `source ~/.zshrc`) to apply the changes.
 
-The first time you run `dcmd`, the wrapper will download the correct binary for your platform from [GitHub Releases](https://github.com/karpikorop/zsh-dcmd-go/releases). If the download fails (unsupported platform, no internet), it will fall back to building from source if [Go](https://go.dev/dl/) is available.
-
 ### Updating
 
-To update to the latest version, pull the latest changes and remove the old binary:
-
 ```zsh
-cd ~/.zsh/zsh-dcmd && git pull && rm -f dcmd
+brew upgrade dcmd
 ```
-
-The next time you run `dcmd`, the wrapper will download the latest release.
 
 ---
 
 ## Configuration
 
-By default, `dcmd` stores all its configuration files in `~/.config/dcmd`.
+By default, `dcmd` stores its files in `~/.config/dcmd`:
 
-If you want to change this (e.g., to sync with your dotfiles), you can set the `DCMD_CONFIG_DIR` variable in your `.zshrc` before the plugin is sourced.
+- `projects/<name>.toml` — the folders, variables and commands of one project
+- `global.toml` — the global commands
+
+If you want to change this (e.g., to sync with your dotfiles), set the `DCMD_CONFIG_DIR` variable in your `.zshrc`:
 
 ```zsh
 export DCMD_CONFIG_DIR="${HOME}/.my-dotfiles/dcmd"
@@ -119,19 +100,31 @@ These commands act on the project associated with your current directory.
 
 - `dcmd` Lists all available commands for the current project.
 
-- `dcmd <number>` Selects a command from the project list to run. The command is placed on your command line for review before you press Enter. If the command has {{variables}}, you will be prompted to fill them in first.
+- `dcmd <number>` Selects a command from the project list to run. The command is placed on your command line for review before you press Enter. If the command has {{variables}}, you will be prompted to fill them in first. Pass `--var NAME=VALUE` to skip a prompt.
+
+- `dcmd show <number>` Shows one command with its template and variables.
 
 - `dcmd add` Starts an interactive prompt to add a new command to the current project.
 
 - `dcmd add --all` Opens an interactive menu to add a new command to multiple selected projects (or all of them) at once.
 
-- `dcmd delete` Shows the current project's commands and prompts you to select one to delete. Automatically renumbers the remaining commands.
+- `dcmd edit [number]` Edits the command and the description of a saved command.
 
-- `dcmd config [project]` Opens the config file for the current project (or a specified project) in your default GUI editor.
+- `dcmd delete [number]` Deletes a command. Without a number, it shows the list and asks you to select one. The other commands keep their numbers.
 
 - `dcmd renumber` Re-numbers all commands in the current project's list sequentially from 1. This is useful for cleaning up the list.
 
-- `dcmd link` Helps find and re-link an "orphaned" config file to the current directory. Use this if you have moved or renamed a project folder and want to recover its old dcmd list.
+- `dcmd copy <project>` Copies commands from another project. Use `--ids 1,4,7` to copy only some of them. Commands that already exist are skipped.
+
+- `dcmd var` Lists the project variables. `dcmd var set <name> <value>` and `dcmd var unset <name>` change them.
+
+- `dcmd projects` Lists all projects with their folders.
+
+- `dcmd path add <project>` Adds the current folder to an existing project. Use this for clones and worktrees.
+
+- `dcmd link` Helps find and re-link an "orphaned" project to the current directory. Use this if you have moved or renamed a project folder and want to recover its old dcmd list.
+
+- `dcmd config [project]` Opens the file of the current project (or a specified project) in your default GUI editor.
 
 ### Global Commands
 
@@ -143,8 +136,33 @@ These commands are available everywhere, regardless of your current directory.
 
 - `dcmd global add` Starts an interactive prompt to add a new global command.
 
+- `dcmd global edit` Edits a global command.
+
+Most project commands also accept `--global` to work on the global list instead, for example `dcmd delete 3 --global`.
+
 ### Help
 
 - `dcmd help` Displays the help message with a list of all available commands and subcommands.
 
 - `dcmd help <command>` Shows detailed help for a specific command (e.g. `dcmd help global`).
+
+---
+
+## Use with AI Agents
+
+Scripts and AI agents can use dcmd too. These flags skip all prompts:
+
+| Flag | Works with | What it does |
+|------|------------|--------------|
+| `--json` | `dcmd`, `dcmd global`, `show`, `var`, `projects` | Prints the result as JSON, with the variables and defaults of each command |
+| `--var NAME=VALUE` | `dcmd <number>`, `dcmd global <number>` | Gives a value for a variable, so dcmd does not ask for it |
+| `--print` | `dcmd <number>`, `dcmd global <number>` | Prints the final command to stdout instead of your prompt |
+| `--command`, `--description` | `add`, `edit` | Sets the command and the description |
+| `--confirm` | `add`, `edit` | Marks a command (for example a deploy) that agents must ask you about before they run it |
+| `--yes` | `delete` | Deletes without asking |
+
+```zsh
+dcmd --json
+dcmd 4 --var FunctionName=invoca --print
+dcmd add --command "yarn build" --description "Build"
+```

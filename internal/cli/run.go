@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -19,43 +20,35 @@ type runOptions struct {
 	print  bool
 }
 
-var runOpts struct {
-	global bool
-	print  bool
-	vars   []string
+var menuOpts struct {
+	json  bool
+	print bool
+	vars  []string
 }
 
-var runCmd = &cobra.Command{
-	Use:   "run <number>",
-	Short: "Fill the variables of a command and put it on your prompt",
-	Long: `Fill the variables of a command and put it on your prompt.
-
-Pass variable values with --var to skip the prompts:
-  dcmd run 4 --var FunctionName=invoca
-
-Project variables (see 'dcmd var') fill their placeholders without a prompt.
-A {{name:default}} placeholder starts its prompt with the default value.
-
-Use --print to write the final command to stdout instead of your prompt.`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := targetProject(openStore(), runOpts.global)
-		if err != nil {
-			return err
-		}
-
-		values, err := parseVarFlags(runOpts.vars)
-		if err != nil {
-			return err
-		}
-		return runByArg(p, args[0], runOptions{values: values, print: runOpts.print})
-	},
+func addMenuFlags(cmd *cobra.Command) {
+	addJSONFlag(cmd, &menuOpts.json)
+	cmd.Flags().BoolVar(&menuOpts.print, "print", false, "Print the final command to stdout instead of your prompt")
+	cmd.Flags().StringArrayVar(&menuOpts.vars, "var", nil, "Value for a variable as NAME=VALUE (repeatable)")
 }
 
-func init() {
-	addGlobalFlag(runCmd, &runOpts.global)
-	runCmd.Flags().BoolVar(&runOpts.print, "print", false, "Print the final command to stdout")
-	runCmd.Flags().StringArrayVar(&runOpts.vars, "var", nil, "Value for a variable as NAME=VALUE (repeatable)")
+// listOrRun lists the commands of p, or runs the command whose number is in args.
+func listOrRun(p *store.Project, args []string) error {
+	if len(args) == 0 {
+		if menuOpts.print || len(menuOpts.vars) > 0 {
+			return errors.New("--print and --var need a command number")
+		}
+		return printProject(p, menuOpts.json)
+	}
+
+	if menuOpts.json {
+		return fmt.Errorf("--json lists all commands. For one command, use 'dcmd show %s --json'", args[0])
+	}
+	values, err := parseVarFlags(menuOpts.vars)
+	if err != nil {
+		return err
+	}
+	return runByArg(p, args[0], runOptions{values: values, print: menuOpts.print})
 }
 
 func runByArg(p *store.Project, arg string, opts runOptions) error {
@@ -124,7 +117,7 @@ func fillDefaults(values map[string]string, missing []template.Variable) error {
 	}
 
 	if len(noDefault) > 0 {
-		return fmt.Errorf("missing values for %s. Pass each one with 'dcmd run <number> --var NAME=VALUE'", quoteNames(noDefault))
+		return fmt.Errorf("missing values for %s. Pass each one with 'dcmd <number> --var NAME=VALUE'", quoteNames(noDefault))
 	}
 	return nil
 }

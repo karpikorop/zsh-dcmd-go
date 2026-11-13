@@ -7,24 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var listOpts struct {
-	global bool
-	json   bool
-}
-
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List the commands of the current project",
-	Args:  cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		p, err := targetProject(openStore(), listOpts.global)
-		if err != nil {
-			return err
-		}
-		return printProject(p, listOpts.json)
-	},
-}
-
 var showOpts struct {
 	global bool
 	json   bool
@@ -54,9 +36,6 @@ var showCmd = &cobra.Command{
 }
 
 func init() {
-	addGlobalFlag(listCmd, &listOpts.global)
-	addJSONFlag(listCmd, &listOpts.json)
-
 	addGlobalFlag(showCmd, &showOpts.global)
 	addJSONFlag(showCmd, &showOpts.json)
 }
